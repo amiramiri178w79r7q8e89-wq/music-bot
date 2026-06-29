@@ -1,24 +1,22 @@
-import os
-import asyncio
 import nest_asyncio
-import sqlite3
+nest_asyncio.apply()
 
+import asyncio
+import sqlite3
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import SessionPasswordNeeded
 
 from pytgcalls import PyTgCalls
 from pytgcalls.types.input_stream import AudioPiped
 
-nest_asyncio.apply()
-
 # ======================
-# ENV (FIXED)
+# CONFIG (FIXED)
 # ======================
-API_ID = int(os.getenv("API_ID", "12688186"))
-API_HASH = os.getenv("API_HASH", "0cdd3e314b5a5487d2c99bbdc7afd450")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw")
-MY_ID = int(os.getenv("MY_ID", "7803165903"))
+API_ID = 12688186
+API_HASH = "0cdd3e314b5a5487d2c99bbdc7afd450"
+BOT_TOKEN = "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw"
+MY_ID = 7803165903
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise Exception("❌ API_ID / API_HASH / BOT_TOKEN تنظیم نشده")
@@ -53,7 +51,10 @@ class MusicBot:
 
         print("✅ BOT STARTED")
 
-        @self.bot.on_message(filters.command("start"))
+        # ======================
+        # START MENU
+        # ======================
+        @self.bot.on_message(filters.command("start") & filters.private)
         async def start(_, m):
             if m.from_user.id != MY_ID:
                 return
@@ -63,26 +64,26 @@ class MusicBot:
                 [InlineKeyboardButton("🎵 Play VC", callback_data="play")]
             ])
 
-            await m.reply("🔥 MUSIC BOT ACTIVE", reply_markup=kb)
+            await m.reply("🔥 MUSIC BOT READY", reply_markup=kb)
 
         # ======================
-        # CALLBACK
+        # CALLBACKS
         # ======================
         @self.bot.on_callback_query()
-        async def cb(_, q):
+        async def cb(_, q: CallbackQuery):
             if q.from_user.id != MY_ID:
                 return
 
             if q.data == "add":
                 user_state[MY_ID] = {"step": "phone"}
-                await q.message.reply("📱 شماره را ارسال کن")
+                await q.message.reply("📱 شماره را ارسال کن:")
 
-            if q.data == "play":
+            elif q.data == "play":
                 user_state[MY_ID] = {"step": "link"}
-                await q.message.reply("🔗 لینک گروه VC را بفرست")
+                await q.message.reply("🔗 لینک گروه را بفرست")
 
         # ======================
-        # MESSAGE FLOW
+        # MESSAGE HANDLER
         # ======================
         @self.bot.on_message(filters.private)
         async def msg(_, m):
@@ -94,17 +95,13 @@ class MusicBot:
 
             state = user_state[MY_ID]
 
-            # PHONE
+            # ---------------- PHONE ----------------
             if state["step"] == "phone":
                 phone = m.text
 
-                client = Client(
-                    f"acc_{phone}",
-                    api_id=API_ID,
-                    api_hash=API_HASH
-                )
-
+                client = Client(f"acc_{phone}", api_id=API_ID, api_hash=API_HASH)
                 await client.connect()
+
                 code = await client.send_code(phone)
 
                 user_state[MY_ID] = {
@@ -116,7 +113,7 @@ class MusicBot:
 
                 await m.reply("📩 OTP را بفرست")
 
-            # OTP
+            # ---------------- OTP ----------------
             elif state["step"] == "otp":
                 try:
                     await state["client"].sign_in(
@@ -127,10 +124,8 @@ class MusicBot:
 
                     session = await state["client"].export_session_string()
 
-                    cur.execute(
-                        "INSERT INTO accounts VALUES (?,?)",
-                        (state["phone"], session)
-                    )
+                    cur.execute("INSERT INTO accounts VALUES (?,?)",
+                                (state["phone"], session))
                     db.commit()
 
                     await m.reply("✅ Account Saved")
@@ -139,15 +134,29 @@ class MusicBot:
 
                 except SessionPasswordNeeded:
                     user_state[MY_ID]["step"] = "password"
-                    await m.reply("🔐 2FA password؟")
+                    await m.reply("🔐 Password?")
 
-            # VC LINK
+            # ---------------- PASSWORD ----------------
+            elif state["step"] == "password":
+                await state["client"].sign_in(password=m.text)
+
+                session = await state["client"].export_session_string()
+
+                cur.execute("INSERT INTO accounts VALUES (?,?)",
+                            (state["phone"], session))
+                db.commit()
+
+                await m.reply("✅ Saved 2FA")
+                await state["client"].disconnect()
+                user_state.pop(MY_ID)
+
+            # ---------------- LINK ----------------
             elif state["step"] == "link":
                 user_state[MY_ID]["link"] = m.text
                 user_state[MY_ID]["step"] = "file"
-                await m.reply("🎵 حالا فایل MP3 بده")
+                await m.reply("🎵 حالا فایل بفرست")
 
-            # FILE + VC PLAY
+            # ---------------- FILE + VC ----------------
             elif state["step"] == "file":
                 file_path = await m.download()
 
@@ -160,7 +169,7 @@ class MusicBot:
                     AudioPiped(file_path)
                 )
 
-                await m.reply("🎶 Playing in Voice Chat")
+                await m.reply("🎶 Playing in VC")
 
                 user_state.pop(MY_ID)
 
