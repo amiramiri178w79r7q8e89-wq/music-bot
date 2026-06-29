@@ -2,21 +2,26 @@ import os
 import asyncio
 import nest_asyncio
 import sqlite3
-import subprocess
 
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import SessionPasswordNeeded
+
+from pytgcalls import PyTgCalls
+from pytgcalls.types.input_stream import AudioPiped
 
 nest_asyncio.apply()
 
 # ======================
-# CONFIG
+# ENV (FIXED)
 # ======================
-API_ID = 12688186
-API_HASH = "0cdd3e314b5a5487d2c99bbdc7afd450"
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-MY_ID = 7803165903
+API_ID = int(os.getenv("API_ID", "12688186"))
+API_HASH = os.getenv("API_HASH", "0cdd3e314b5a5487d2c99bbdc7afd450")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw")
+MY_ID = int(os.getenv("MY_ID", "7803165903"))
+
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    raise Exception("❌ API_ID / API_HASH / BOT_TOKEN تنظیم نشده")
 
 # ======================
 # DB
@@ -29,15 +34,24 @@ db.commit()
 user_state = {}
 
 # ======================
-# BOT CORE
+# BOT CLASS
 # ======================
 class MusicBot:
     def __init__(self):
-        self.bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+        self.bot = Client(
+            "bot",
+            api_id=API_ID,
+            api_hash=API_HASH,
+            bot_token=BOT_TOKEN
+        )
+
+        self.call = PyTgCalls(self.bot)
 
     async def start(self):
         await self.bot.start()
-        print("✅ Bot Started")
+        await self.call.start()
+
+        print("✅ BOT STARTED")
 
         @self.bot.on_message(filters.command("start"))
         async def start(_, m):
@@ -49,26 +63,26 @@ class MusicBot:
                 [InlineKeyboardButton("🎵 Play VC", callback_data="play")]
             ])
 
-            await m.reply("🔥 MUSIC VC BOT", reply_markup=kb)
+            await m.reply("🔥 MUSIC BOT ACTIVE", reply_markup=kb)
 
         # ======================
-        # CALLBACKS
+        # CALLBACK
         # ======================
         @self.bot.on_callback_query()
-        async def cb(_, q: CallbackQuery):
+        async def cb(_, q):
             if q.from_user.id != MY_ID:
                 return
 
             if q.data == "add":
                 user_state[MY_ID] = {"step": "phone"}
-                await q.message.reply("📱 Send phone number")
+                await q.message.reply("📱 شماره را ارسال کن")
 
             if q.data == "play":
-                user_state[MY_ID] = {"step": "group"}
-                await q.message.reply("🔗 Send group link")
+                user_state[MY_ID] = {"step": "link"}
+                await q.message.reply("🔗 لینک گروه VC را بفرست")
 
         # ======================
-        # LOGIC
+        # MESSAGE FLOW
         # ======================
         @self.bot.on_message(filters.private)
         async def msg(_, m):
@@ -80,13 +94,17 @@ class MusicBot:
 
             state = user_state[MY_ID]
 
-            # ---------------- PHONE ----------------
+            # PHONE
             if state["step"] == "phone":
                 phone = m.text
 
-                client = Client(f"acc_{phone}", api_id=API_ID, api_hash=API_HASH)
-                await client.connect()
+                client = Client(
+                    f"acc_{phone}",
+                    api_id=API_ID,
+                    api_hash=API_HASH
+                )
 
+                await client.connect()
                 code = await client.send_code(phone)
 
                 user_state[MY_ID] = {
@@ -96,9 +114,9 @@ class MusicBot:
                     "hash": code.phone_code_hash
                 }
 
-                await m.reply("📩 OTP code?")
+                await m.reply("📩 OTP را بفرست")
 
-            # ---------------- OTP ----------------
+            # OTP
             elif state["step"] == "otp":
                 try:
                     await state["client"].sign_in(
@@ -109,58 +127,40 @@ class MusicBot:
 
                     session = await state["client"].export_session_string()
 
-                    cur.execute("INSERT INTO accounts VALUES (?,?)",
-                                (state["phone"], session))
+                    cur.execute(
+                        "INSERT INTO accounts VALUES (?,?)",
+                        (state["phone"], session)
+                    )
                     db.commit()
 
-                    await m.reply("✅ Account saved")
+                    await m.reply("✅ Account Saved")
                     await state["client"].disconnect()
                     user_state.pop(MY_ID)
 
                 except SessionPasswordNeeded:
                     user_state[MY_ID]["step"] = "password"
-                    await m.reply("🔐 2FA password?")
+                    await m.reply("🔐 2FA password؟")
 
-            # ---------------- PASSWORD ----------------
-            elif state["step"] == "password":
-                await state["client"].sign_in(password=m.text)
+            # VC LINK
+            elif state["step"] == "link":
+                user_state[MY_ID]["link"] = m.text
+                user_state[MY_ID]["step"] = "file"
+                await m.reply("🎵 حالا فایل MP3 بده")
 
-                session = await state["client"].export_session_string()
-
-                cur.execute("INSERT INTO accounts VALUES (?,?)",
-                            (state["phone"], session))
-                db.commit()
-
-                await m.reply("✅ Saved")
-                await state["client"].disconnect()
-                user_state.pop(MY_ID)
-
-            # ---------------- GROUP ----------------
-            elif state["step"] == "group":
-                user_state[MY_ID]["group"] = m.text
-                user_state[MY_ID]["step"] = "audio"
-                await m.reply("🎵 Send audio/video file")
-
-            # ---------------- PLAY VC (NO PYTGCALLS) ----------------
-            elif state["step"] == "audio":
+            # FILE + VC PLAY
+            elif state["step"] == "file":
                 file_path = await m.download()
 
-                group = user_state[MY_ID]["group"]
+                chat = user_state[MY_ID]["link"]
 
-                await m.reply("🔊 Joining VC + Streaming...")
+                await m.reply("🔊 Joining VC...")
 
-                # 🔥 FFmpeg direct stream (REAL VC ENGINE)
-                cmd = [
-                    "ffmpeg",
-                    "-re",
-                    "-i", file_path,
-                    "-f", "mp3",
-                    "pipe:1"
-                ]
+                await self.call.join_group_call(
+                    chat,
+                    AudioPiped(file_path)
+                )
 
-                subprocess.Popen(cmd)
-
-                await m.reply("🎶 Playing started (FFmpeg VC mode)")
+                await m.reply("🎶 Playing in Voice Chat")
 
                 user_state.pop(MY_ID)
 
