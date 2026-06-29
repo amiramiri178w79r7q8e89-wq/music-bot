@@ -11,10 +11,10 @@ from pyrogram.errors import SessionPasswordNeeded
 
 
 # ================= CONFIG =================
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-MY_ID = int(os.getenv("MY_ID"))
+API_ID = int(os.getenv("12688186"))
+API_HASH = os.getenv("0cdd3e314b5a5487d2c99bbdc7afd450")
+BOT_TOKEN = os.getenv("8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw")
+MY_ID = int(os.getenv("7803165903"))
 
 
 # ================= DB =================
