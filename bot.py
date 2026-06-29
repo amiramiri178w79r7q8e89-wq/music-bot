@@ -1,33 +1,30 @@
-import nest_asyncio
-nest_asyncio.apply()
-
+import os
 import asyncio
 import sqlite3
-import os
+import nest_asyncio
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import SessionPasswordNeeded
 
-from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioPiped
+nest_asyncio.apply()
 
+# ======================
+# CONFIG (FIXED)
+# ======================
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+MY_ID = int(os.getenv("MY_ID", "0"))
 
-# =========================
-# CONFIG FIXED (IMPORTANT)
-# =========================
-API_ID = int(os.getenv("API_ID", "12688186"))
-API_HASH = os.getenv("API_HASH", "0cdd3e314b5a5487d2c99bbdc7afd450")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw")
-MY_ID = int(os.getenv("MY_ID", "7803165903"))
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    raise Exception("❌ API_ID / API_HASH / BOT_TOKEN تنظیم نشده")
 
-
-# =========================
+# ======================
 # DATABASE
-# =========================
+# ======================
 db = sqlite3.connect("accounts.db", check_same_thread=False)
 cursor = db.cursor()
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS accounts (
     phone TEXT PRIMARY KEY,
@@ -38,91 +35,96 @@ db.commit()
 
 user_states = {}
 
+print("✅ Bot loaded")
 
-# =========================
-# BOT CLASS
-# =========================
+# ======================
+# PANEL
+# ======================
 class ProfessionalPanel:
     def __init__(self):
         self.bot = Client(
-            "music_bot",
+            "manager_bot",
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN
         )
 
-        self.voice = PyTgCalls(self.bot)
-
-    async def start_menu(self, message):
-        buttons = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Add Account", callback_data="add")],
-            [InlineKeyboardButton("📊 List Accounts", callback_data="list")],
-            [InlineKeyboardButton("🎵 Send Music", callback_data="music")],
-            [InlineKeyboardButton("🎧 Join Voice", callback_data="voice")]
+    async def show_main_menu(self, message):
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("➕ اکانت", callback_data="add_acc"),
+                InlineKeyboardButton("📊 لیست", callback_data="list_acc")
+            ],
+            [
+                InlineKeyboardButton("🎵 ارسال فایل", callback_data="send_file")
+            ],
+            [
+                InlineKeyboardButton("ℹ️ راهنما", callback_data="help")
+            ]
         ])
 
-        await message.reply("🎛 Panel Ready", reply_markup=buttons)
+        await message.reply("🌟 پنل مدیریت", reply_markup=kb)
 
-    async def run(self):
+    async def start(self):
         await self.bot.start()
-        await self.voice.start()
+        print("🚀 Bot started")
 
-        print("✅ Bot Running")
-
-        # ================= START =================
         @self.bot.on_message(filters.command("start") & filters.private)
-        async def start(_, msg):
-            if msg.from_user.id != MY_ID:
+        async def start_cmd(client, message):
+            if message.from_user.id != MY_ID:
                 return
-            await self.start_menu(msg)
+            await self.show_main_menu(message)
 
-        # ================= CALLBACKS =================
         @self.bot.on_callback_query()
-        async def cb(_, cq: CallbackQuery):
-
-            uid = cq.from_user.id
-            if uid != MY_ID:
+        async def cb(client, cq: CallbackQuery):
+            if cq.from_user.id != MY_ID:
                 return
 
             data = cq.data
 
-            if data == "add":
-                user_states[uid] = {"step": "phone"}
-                await cq.message.reply("Send phone number")
+            if data == "add_acc":
+                user_states[MY_ID] = {"step": "phone"}
+                await cq.message.reply("📱 شماره را ارسال کن:")
 
-            elif data == "list":
+            elif data == "list_acc":
                 cursor.execute("SELECT phone FROM accounts")
                 rows = cursor.fetchall()
-                await cq.message.reply("\n".join([r[0] for r in rows]) or "Empty")
 
-            elif data == "voice":
-                user_states[uid] = {"step": "chat"}
-                await cq.message.reply("Send chat link or ID")
+                if not rows:
+                    await cq.answer("خالیه", show_alert=True)
+                else:
+                    txt = "\n".join([r[0] for r in rows])
+                    await cq.message.reply(f"📑 اکانت‌ها:\n{txt}")
 
-            elif data == "music":
-                user_states[uid] = {"step": "file"}
-                await cq.message.reply("Send mp3 file")
+            elif data == "send_file":
+                user_states[MY_ID] = {"step": "file"}
+                await cq.message.reply("🎵 فایل بفرست")
 
-        # ================= MESSAGE HANDLER =================
+            elif data == "help":
+                await cq.message.reply("شروع: /start")
+
         @self.bot.on_message(filters.private)
-        async def msg_handler(_, msg):
-
-            uid = msg.from_user.id
-            if uid != MY_ID:
-                return
-
-            if uid not in user_states:
+        async def msg(client, message):
+            uid = message.from_user.id
+            if uid != MY_ID or uid not in user_states:
                 return
 
             state = user_states[uid]
+            text = message.text
 
-            # ---------------- PHONE ----------------
+            # ======================
+            # PHONE STEP
+            # ======================
             if state["step"] == "phone":
-                phone = msg.text
+                phone = text
 
-                temp = Client("temp", api_id=API_ID, api_hash=API_HASH)
+                temp = Client(
+                    f"temp_{phone}",
+                    api_id=API_ID,
+                    api_hash=API_HASH
+                )
+
                 await temp.connect()
-
                 code = await temp.send_code(phone)
 
                 user_states[uid] = {
@@ -132,84 +134,73 @@ class ProfessionalPanel:
                     "hash": code.phone_code_hash
                 }
 
-                await msg.reply("Send OTP")
+                await message.reply("📩 کد را بفرست")
 
-            # ---------------- OTP ----------------
+            # ======================
+            # OTP
+            # ======================
             elif state["step"] == "otp":
                 try:
                     await state["client"].sign_in(
                         state["phone"],
                         state["hash"],
-                        msg.text
+                        text
                     )
 
                     session = await state["client"].export_session_string()
 
                     cursor.execute(
-                        "INSERT OR REPLACE INTO accounts VALUES (?, ?)",
+                        "INSERT OR REPLACE INTO accounts VALUES (?,?)",
                         (state["phone"], session)
                     )
                     db.commit()
 
-                    await msg.reply("Saved ✔")
-                    del user_states[uid]
+                    await message.reply("✅ اکانت ذخیره شد")
+                    await state["client"].disconnect()
+                    user_states.pop(uid)
 
                 except SessionPasswordNeeded:
-                    user_states[uid]["step"] = "pass"
-                    await msg.reply("2FA password?")
+                    user_states[uid]["step"] = "password"
+                    await message.reply("🔐 پسورد 2FA بده")
 
-            # ---------------- PASSWORD ----------------
-            elif state["step"] == "pass":
+            # ======================
+            # PASSWORD
+            # ======================
+            elif state["step"] == "password":
                 try:
-                    await state["client"].sign_in(password=msg.text)
-
+                    await state["client"].sign_in(password=text)
                     session = await state["client"].export_session_string()
 
                     cursor.execute(
-                        "INSERT OR REPLACE INTO accounts VALUES (?, ?)",
+                        "INSERT OR REPLACE INTO accounts VALUES (?,?)",
                         (state["phone"], session)
                     )
                     db.commit()
 
-                    await msg.reply("Saved ✔")
-                    del user_states[uid]
+                    await message.reply("✅ ذخیره شد")
+                    await state["client"].disconnect()
+                    user_states.pop(uid)
 
                 except Exception as e:
-                    await msg.reply(str(e))
+                    await message.reply(f"❌ {e}")
 
-            # ---------------- CHAT ----------------
-            elif state["step"] == "chat":
-
-                chat = await self.bot.get_chat(msg.text)
-                state["chat_id"] = chat.id
-
-                user_states[uid]["step"] = "file"
-                await msg.reply("Now send audio file")
-
-            # ---------------- FILE + PLAY ----------------
+            # ======================
+            # FILE SAVE ONLY
+            # ======================
             elif state["step"] == "file":
+                file_path = await message.download()
 
-                file_path = await msg.download()
+                await message.reply("✅ فایل ذخیره شد")
+                print("Saved:", file_path)
 
-                chat_id = state.get("chat_id")
-
-                if not chat_id:
-                    await msg.reply("Chat not set")
-                    return
-
-                await self.voice.join_group_call(
-                    chat_id,
-                    AudioPiped(file_path)
-                )
-
-                await msg.reply("🎵 Playing...")
-                del user_states[uid]
+                user_states.pop(uid)
 
 
-# =========================
+# ======================
 # RUN
-# =========================
+# ======================
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
     app = ProfessionalPanel()
-    loop.run_until_complete(app.run())
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(app.start())
