@@ -1,6 +1,4 @@
 # سلول اول: نصب و تنظیمات
-!pip install pyrogram tgcrypto nest_asyncio pytgcalls
-
 import nest_asyncio
 nest_asyncio.apply()
 import asyncio
