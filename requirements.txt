@@ -1,5 +1,5 @@
 pyrogram==2.0.106
 tgcrypto==1.2.5
 nest_asyncio==1.6.0
-pytgcalls==3.0.0.dev6
+pytgcalls==2.0.0
 yt-dlp
