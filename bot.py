@@ -8,8 +8,8 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.errors import SessionPasswordNeeded
 
 # --- تنظیمات اصلی ---
-API_ID = 12688186  
-API_HASH = "0cdd3e3145b5a5487d2c99bbdc7afd450"
+API_ID = 12688186
+API_HASH = "0cdd3e314b5a5487d2c99bbdc7afd450"
 BOT_TOKEN = "8576876988:AAGBLHEz9IAQa9NwgG6L8tWZnUQjUifxu10"
 MY_ID = 7803165903  
 
