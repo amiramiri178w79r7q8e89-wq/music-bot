@@ -1,39 +1,50 @@
+# ======================
 # سلول اول: نصب و تنظیمات
-!pip install pyrogram tgcrypto nest_asyncio
+# ======================
+# pip install pyrogram tgcrypto nest_asyncio yt-dlp
 
+import os
 import nest_asyncio
-nest_asyncio.apply()
-
 import asyncio
 import sqlite3
 
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import SessionPasswordNeeded
 
-# ======================
-# تنظیمات واقعی (FIXED)
-# ======================
-API_ID = 12688186
-API_HASH = "0cdd3e314b5a5487d2c99bbdc7afd450"
-BOT_TOKEN = "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw"
-MY_ID = 7803165903
+nest_asyncio.apply()
 
 # ======================
-# DB
+# تنظیمات اصلی (FIXED)
+# ======================
+API_ID = int(os.getenv("API_ID", "12688186"))
+API_HASH = os.getenv("API_HASH", "0cdd3e314b5a5487d2c99bbdc7afd450")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw")
+MY_ID = int(os.getenv("MY_ID", "7803165903"))
+
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    raise Exception("❌ API_ID / API_HASH / BOT_TOKEN تنظیم نشده")
+
+# ======================
+# دیتابیس
 # ======================
 db = sqlite3.connect("accounts.db", check_same_thread=False)
-cur = db.cursor()
-cur.execute("CREATE TABLE IF NOT EXISTS accounts(phone TEXT, session TEXT)")
+cursor = db.cursor()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS accounts (
+phone TEXT PRIMARY KEY,
+session TEXT
+)
+""")
 db.commit()
 
 user_states = {}
 
-print("✅ سیستم آماده است")
+print("✅ Bot loaded")
 
 
 # ======================
-# BOT CLASS
+# سلول دوم: ربات اصلی
 # ======================
 class ProfessionalPanel:
     def __init__(self):
@@ -46,61 +57,83 @@ class ProfessionalPanel:
 
     async def show_menu(self, message):
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ اضافه کردن اکانت", callback_data="add")],
-            [InlineKeyboardButton("📊 لیست اکانت‌ها", callback_data="list")],
-            [InlineKeyboardButton("🎵 ارسال فایل", callback_data="send")]
+            [
+                InlineKeyboardButton("➕ اضافه کردن اکانت", callback_data="add_acc"),
+                InlineKeyboardButton("📊 لیست اکانت‌ها", callback_data="list_acc")
+            ],
+            [
+                InlineKeyboardButton("🎵 ارسال فایل", callback_data="send_file")
+            ],
+            [
+                InlineKeyboardButton("ℹ️ راهنما", callback_data="help")
+            ]
         ])
-        await message.reply("🔥 پنل مدیریت", reply_markup=kb)
+        await message.reply("🌟 پنل مدیریت حرفه‌ای 🌟", reply_markup=kb)
 
     async def start(self):
         await self.bot.start()
         print("🚀 Bot Started")
 
-        # START
-        @self.bot.on_message(filters.command("start"))
-        async def start_cmd(_, m):
-            if m.from_user.id != MY_ID:
+        # ======================
+        # /start
+        # ======================
+        @self.bot.on_message(filters.command("start") & filters.private)
+        async def start_cmd(_, msg):
+            if msg.from_user.id != MY_ID:
                 return
-            await self.show_menu(m)
+            await self.show_menu(msg)
 
-        # CALLBACK
+        # ======================
+        # Callback
+        # ======================
         @self.bot.on_callback_query()
-        async def cb(_, q):
+        async def callback(_, q: CallbackQuery):
             if q.from_user.id != MY_ID:
                 return
 
-            if q.data == "add":
-                user_states[MY_ID] = {"step": "phone"}
-                await q.message.reply("📱 شماره را ارسال کن")
+            data = q.data
 
-            if q.data == "list":
-                cur.execute("SELECT phone FROM accounts")
-                rows = cur.fetchall()
+            if data == "add_acc":
+                user_states[MY_ID] = {"step": "phone"}
+                await q.message.reply("📱 شماره را بفرست")
+
+            elif data == "list_acc":
+                cursor.execute("SELECT phone FROM accounts")
+                rows = cursor.fetchall()
 
                 if not rows:
-                    await q.message.reply("هیچ اکانتی نیست")
-                else:
-                    txt = "\n".join([r[0] for r in rows])
-                    await q.message.reply(txt)
+                    await q.answer("هیچ اکانتی نیست", show_alert=True)
+                    return
 
-            if q.data == "send":
+                text = "📊 اکانت‌ها:\n" + "\n".join([r[0] for r in rows])
+                await q.message.reply(text)
+
+            elif data == "send_file":
                 user_states[MY_ID] = {"step": "file"}
-                await q.message.reply("📥 فایل بفرست")
+                await q.message.reply("📥 فایل (MP3/MP4) بفرست")
 
-        # MESSAGE HANDLER
+            elif data == "help":
+                await q.message.reply("📌 اول اکانت اضافه کن، بعد فایل بفرست.")
+
+        # ======================
+        # Messages flow
+        # ======================
         @self.bot.on_message(filters.private)
-        async def msg(_, m):
-            if m.from_user.id != MY_ID:
+        async def handler(_, msg):
+            if msg.from_user.id != MY_ID:
                 return
 
             if MY_ID not in user_states:
                 return
 
             state = user_states[MY_ID]
+            step = state["step"]
 
+            # ----------------------
             # PHONE
-            if state["step"] == "phone":
-                phone = m.text
+            # ----------------------
+            if step == "phone":
+                phone = msg.text.strip()
 
                 client = Client(
                     f"acc_{phone}",
@@ -118,57 +151,68 @@ class ProfessionalPanel:
                     "hash": code.phone_code_hash
                 }
 
-                await m.reply("📩 کد تایید را ارسال کن")
+                await msg.reply("📩 کد را بفرست")
 
+            # ----------------------
             # OTP
-            elif state["step"] == "otp":
+            # ----------------------
+            elif step == "otp":
                 try:
                     await state["client"].sign_in(
                         state["phone"],
                         state["hash"],
-                        m.text
+                        msg.text.strip()
                     )
 
                     session = await state["client"].export_session_string()
 
-                    cur.execute("INSERT INTO accounts VALUES (?,?)",
-                                (state["phone"], session))
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO accounts VALUES (?,?)",
+                        (state["phone"], session)
+                    )
                     db.commit()
 
-                    await m.reply("✅ اکانت ذخیره شد")
-
+                    await msg.reply("✅ اکانت ذخیره شد")
                     await state["client"].disconnect()
+
                     user_states.pop(MY_ID)
 
                 except SessionPasswordNeeded:
                     user_states[MY_ID]["step"] = "password"
-                    await m.reply("🔐 پسورد 2FA؟")
+                    await msg.reply("🔐 پسورد 2FA؟")
 
+            # ----------------------
             # PASSWORD
-            elif state["step"] == "password":
-                await state["client"].sign_in(password=m.text)
+            # ----------------------
+            elif step == "password":
+                await state["client"].sign_in(password=msg.text.strip())
 
                 session = await state["client"].export_session_string()
 
-                cur.execute("INSERT INTO accounts VALUES (?,?)",
-                            (state["phone"], session))
+                cursor.execute(
+                    "INSERT OR REPLACE INTO accounts VALUES (?,?)",
+                    (state["phone"], session)
+                )
                 db.commit()
 
-                await m.reply("✅ ذخیره شد")
+                await msg.reply("✅ ذخیره شد")
                 await state["client"].disconnect()
+
                 user_states.pop(MY_ID)
 
-            # FILE SAVE (بدون ویسکال واقعی)
-            elif state["step"] == "file":
-                file_path = await m.download()
+            # ----------------------
+            # FILE SAVE
+            # ----------------------
+            elif step == "file":
+                file_path = await msg.download()
 
-                await m.reply("✅ فایل ذخیره شد روی سرور\n📂 آماده استفاده هست")
+                await msg.reply(f"✅ فایل ذخیره شد:\n`{file_path}`")
 
                 user_states.pop(MY_ID)
 
 
 # ======================
-# RUN
+# سلول سوم: اجرا
 # ======================
 if __name__ == "__main__":
     app = ProfessionalPanel()
