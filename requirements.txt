@@ -1,8 +1,4 @@
 pyrogram==2.0.106
 tgcrypto==1.2.5
 nest_asyncio==1.6.0
-
-pytgcalls==3.0.0.dev6
-tgcalls==3.0.0.dev2
-
 opencv-python-headless==4.5.5.62
