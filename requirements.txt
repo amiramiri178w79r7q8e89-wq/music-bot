@@ -3,4 +3,3 @@ tgcrypto==1.2.5
 nest_asyncio==1.6.0
 
 pytgcalls==3.0.0.dev22
-tgcalls==3.0.0.dev21
