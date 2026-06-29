@@ -12,30 +12,25 @@ from pytgcalls import PyTgCalls
 from pytgcalls.types.input_stream import AudioPiped
 
 
-# ================= CONFIG =================
+# --- تنظیمات اصلی ---
 API_ID = 12688186
 API_HASH = "0cdd3e314b5a5487d2c99bbdc7afd450"
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "8576876988:AAEW3VXtqkXAyDsMiapTQxYTkGzfcKPQHDw"
 MY_ID = 7803165903
 
 
-# ================= DATABASE =================
+# --- دیتابیس ---
 db = sqlite3.connect("accounts.db", check_same_thread=False)
 cursor = db.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS accounts (
-    phone TEXT PRIMARY KEY,
-    session_string TEXT
-)
-""")
+cursor.execute("CREATE TABLE IF NOT EXISTS accounts (phone TEXT PRIMARY KEY, session_string TEXT)")
 db.commit()
 
 user_states = {}
 
-print("✅ Init done")
+print("✅ init done")
 
 
-# ================= MAIN BOT =================
+# --- کلاس اصلی ---
 class ProfessionalPanel:
     def __init__(self):
         self.bot = Client(
@@ -54,30 +49,25 @@ class ProfessionalPanel:
                 InlineKeyboardButton("📊 لیست", callback_data="list_acc")
             ],
             [
-                InlineKeyboardButton("🎵 MP3/MP4", callback_data="send_file"),
+                InlineKeyboardButton("🎵 فایل", callback_data="send_file"),
                 InlineKeyboardButton("🚀 ویس", callback_data="join_voice_prompt")
-            ],
-            [
-                InlineKeyboardButton("ℹ️ راهنما", callback_data="help")
             ]
         ])
 
-        await message.reply("🌟 پنل ربات", reply_markup=buttons)
+        await message.reply("🌟 پنل", reply_markup=buttons)
 
     async def start(self):
         await self.bot.start()
         await self.voice_client.start()
 
-        print("🚀 Bot Started")
+        print("🚀 bot started")
 
-        # ============ START ============
         @self.bot.on_message(filters.command("start") & filters.private)
         async def start_cmd(client, message):
             if message.from_user.id != MY_ID:
                 return
             await self.show_main_menu(message)
 
-        # ============ CALLBACKS ============
         @self.bot.on_callback_query()
         async def callback(client, cq: CallbackQuery):
             if cq.from_user.id != MY_ID:
@@ -86,28 +76,22 @@ class ProfessionalPanel:
             data = cq.data
 
             if data == "add_acc":
-                await cq.message.reply("📱 شماره را ارسال کن")
+                await cq.message.reply("📱 شماره را بفرست")
                 user_states[MY_ID] = {"step": "phone"}
 
             elif data == "list_acc":
                 cursor.execute("SELECT phone FROM accounts")
                 rows = cursor.fetchall()
-
-                if not rows:
-                    await cq.answer("خالیه", show_alert=True)
-                else:
-                    txt = "\n".join([r[0] for r in rows])
-                    await cq.message.reply(txt)
+                await cq.message.reply("\n".join([r[0] for r in rows]) or "خالیه")
 
             elif data == "join_voice_prompt":
                 await cq.message.reply("🔗 لینک گروه را بفرست")
                 user_states[MY_ID] = {"step": "link"}
 
             elif data == "send_file":
-                await cq.message.reply("🎵 فایل یا لینک موزیک را بفرست")
+                await cq.message.reply("🎵 فایل را بفرست")
                 user_states[MY_ID] = {"step": "file"}
 
-        # ============ MESSAGE HANDLER ============
         @self.bot.on_message(filters.private)
         async def handler(client, message):
             if message.from_user.id != MY_ID:
@@ -156,14 +140,14 @@ class ProfessionalPanel:
                     )
                     db.commit()
 
-                    await message.reply("✅ اکانت ذخیره شد")
-                    await state["client"].disconnect()
+                    await message.reply("✅ ذخیره شد")
 
+                    await state["client"].disconnect()
                     user_states.pop(MY_ID, None)
 
                 except SessionPasswordNeeded:
                     user_states[MY_ID]["step"] = "password"
-                    await message.reply("🔐 پسورد 2FA را بده")
+                    await message.reply("🔐 پسورد 2FA")
 
             # -------- PASSWORD --------
             elif state["step"] == "password":
@@ -179,8 +163,8 @@ class ProfessionalPanel:
                     db.commit()
 
                     await message.reply("✅ ذخیره شد")
-                    await state["client"].disconnect()
 
+                    await state["client"].disconnect()
                     user_states.pop(MY_ID, None)
 
                 except Exception as e:
@@ -190,12 +174,12 @@ class ProfessionalPanel:
             elif state["step"] == "link":
                 user_states[MY_ID]["link"] = message.text.strip()
                 user_states[MY_ID]["step"] = "file"
-                await message.reply("🎵 حالا فایل موزیک را بفرست")
+                await message.reply("🎵 حالا فایل را بفرست")
 
-            # -------- FILE + VOICE CHAT FIX --------
+            # -------- FILE + FIXED VOICE --------
             elif state["step"] == "file":
-                file_path = await message.download()
 
+                file_path = await message.download()
                 chat = user_states[MY_ID]["link"]
 
                 try:
@@ -204,7 +188,7 @@ class ProfessionalPanel:
                         AudioPiped(file_path)
                     )
 
-                    await message.reply("🎶 در ویس چت پخش شد")
+                    await message.reply("🎶 پخش شروع شد")
 
                 except Exception as e:
                     await message.reply(f"❌ خطا: {e}")
@@ -212,9 +196,8 @@ class ProfessionalPanel:
                 user_states.pop(MY_ID, None)
 
 
-# ================= RUN =================
+# --- RUN ---
 if __name__ == "__main__":
     bot = ProfessionalPanel()
-
     loop = asyncio.get_event_loop()
     loop.run_until_complete(bot.start())
